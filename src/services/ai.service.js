@@ -4,7 +4,7 @@ import { getSystemPrompt } from "./prompt.service.js";
 
 const MODEL = "gpt-5.4-mini";
 const TEMPERATURE = 0.2;
-const MAX_TOKENS = 3000;
+const MAX_COMPLETION_TOKENS = 3000;
 const OPENAI_TIMEOUT_MS = 10000;
 
 /*
@@ -45,6 +45,35 @@ const FOLLOW_UP_OUTPUT_SCHEMA_INSTRUCTION = [
   "}",
   "Do not add extra keys.",
 ].join("\n");
+
+const NUTRITION_ANALYSIS_RESPONSE_FORMAT = {
+  type: "json_schema",
+  json_schema: {
+    name: "nutrition_analysis",
+    schema: {
+      type: "object",
+      properties: {
+        userResponse: { type: "object" },
+        clinicalSummary: { type: "object" }
+      },
+      required: ["userResponse", "clinicalSummary"]
+    }
+  }
+};
+
+const FOLLOW_UP_RESPONSE_FORMAT = {
+  type: "json_schema",
+  json_schema: {
+    name: "follow_up_answer",
+    schema: {
+      type: "object",
+      properties: {
+        answer: { type: "string" }
+      },
+      required: ["answer"]
+    }
+  }
+};
 
 let openaiClient = null;
 
@@ -246,17 +275,40 @@ async function createCompletionWithTimeout(client, params) {
   }, OPENAI_TIMEOUT_MS);
 
   try {
-    return await client.chat.completions.create(params, {
+    return await client.responses.create(params, {
       signal: controller.signal
     });
   } catch (error) {
     if (error?.name === "AbortError") {
       throw new Error("OpenAI request timed out");
     }
+    const status = error?.status ?? error?.response?.status ?? "unknown";
+    const code = error?.code ?? "unknown";
+    const message = error?.message ?? "Unknown OpenAI error";
+    console.error("OpenAI API request failed", { status, code, message });
     throw error;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function extractResponseText(response) {
+  if (isNonEmptyString(response?.output_text)) {
+    return response.output_text.trim();
+  }
+
+  const output = Array.isArray(response?.output) ? response.output : [];
+
+  for (const item of output) {
+    const content = Array.isArray(item?.content) ? item.content : [];
+    for (const part of content) {
+      if (isNonEmptyString(part?.text)) {
+        return part.text.trim();
+      }
+    }
+  }
+
+  return "";
 }
 
 /*
@@ -265,19 +317,42 @@ Analyze request
 
 async function requestAiJson(messages) {
   const client = getOpenAIClient();
+  const systemMessage = Array.isArray(messages)
+    ? messages.find((message) => message?.role === "system" && isNonEmptyString(message?.content))
+    : null;
+  const userMessage = Array.isArray(messages)
+    ? messages.find((message) => message?.role === "user" && isNonEmptyString(message?.content))
+    : null;
 
-  const completion = await createCompletionWithTimeout(client, {
-    model: MODEL,
-    temperature: TEMPERATURE,
-    max_tokens: MAX_TOKENS,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: OUTPUT_SCHEMA_INSTRUCTION },
-      ...messages
-    ]
-  });
+  if (!systemMessage || !userMessage) {
+    throw new Error("Invalid messages payload: expected system and user messages");
+  }
 
-  const content = completion.choices?.[0]?.message?.content;
+  let response;
+
+  try {
+    response = await createCompletionWithTimeout(client, {
+      model: MODEL,
+      temperature: TEMPERATURE,
+      max_completion_tokens: MAX_COMPLETION_TOKENS,
+      response_format: NUTRITION_ANALYSIS_RESPONSE_FORMAT,
+      input: [
+        {
+          role: "system",
+          content: `${OUTPUT_SCHEMA_INSTRUCTION}\n\n${systemMessage.content}`
+        },
+        { role: "user", content: userMessage.content }
+      ]
+    });
+  } catch (error) {
+    const status = error?.status ?? error?.response?.status ?? "unknown";
+    const code = error?.code ?? "unknown";
+    const message = error?.message ?? "Unknown OpenAI error";
+    console.error("OpenAI analyze request failed", { status, code, message });
+    throw error;
+  }
+
+  const content = extractResponseText(response);
 
   if (!isNonEmptyString(content)) {
     throw new Error("OpenAI returned an empty response");
@@ -300,19 +375,36 @@ Follow-up request
 
 async function requestFollowUpJson(messages) {
   const client = getOpenAIClient();
+  const userMessage = Array.isArray(messages)
+    ? messages.find((message) => message?.role === "user" && isNonEmptyString(message?.content))
+    : null;
 
-  const completion = await createCompletionWithTimeout(client, {
-    model: MODEL,
-    temperature: TEMPERATURE,
-    max_tokens: MAX_TOKENS,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: FOLLOW_UP_OUTPUT_SCHEMA_INSTRUCTION },
-      ...messages
-    ]
-  });
+  if (!userMessage) {
+    throw new Error("Invalid follow-up messages payload: expected user message");
+  }
 
-  const content = completion.choices?.[0]?.message?.content;
+  let response;
+
+  try {
+    response = await createCompletionWithTimeout(client, {
+      model: MODEL,
+      temperature: TEMPERATURE,
+      max_completion_tokens: MAX_COMPLETION_TOKENS,
+      response_format: FOLLOW_UP_RESPONSE_FORMAT,
+      input: [
+        { role: "system", content: FOLLOW_UP_OUTPUT_SCHEMA_INSTRUCTION },
+        { role: "user", content: userMessage.content }
+      ]
+    });
+  } catch (error) {
+    const status = error?.status ?? error?.response?.status ?? "unknown";
+    const code = error?.code ?? "unknown";
+    const message = error?.message ?? "Unknown OpenAI error";
+    console.error("OpenAI follow-up request failed", { status, code, message });
+    throw error;
+  }
+
+  const content = extractResponseText(response);
 
   if (!isNonEmptyString(content)) {
     throw new Error("OpenAI returned an empty follow-up response");
