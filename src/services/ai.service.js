@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { query } from "../db/db.js";
 import { getSystemPrompt } from "./prompt.service.js";
 
-const MODEL = "gpt-4o-mini";
+const MODEL = "gpt-5.4-mini";
 const TEMPERATURE = 0.2;
 const MAX_TOKENS = 3000;
 const OPENAI_TIMEOUT_MS = 10000;
@@ -18,6 +18,8 @@ const OUTPUT_SCHEMA_INSTRUCTION = [
   "{",
   '  "userResponse": {',
   '    "assessment": "string",',
+  '    "pros": ["string"],',
+  '    "cons": ["string"],',
   '    "keyRisks": ["string"],',
   '    "mechanism": "string",',
   '    "recommendation": "string",',
@@ -117,8 +119,25 @@ function normalizeAiResponse(parsed) {
     throw new Error("AI response is missing userResponse object");
   }
 
-  if (!Array.isArray(userResponse.keyRisks)) {
+  if (
+    !Array.isArray(userResponse.keyRisks) ||
+    userResponse.keyRisks.some((value) => typeof value !== "string")
+  ) {
     throw new Error("AI response has invalid userResponse.keyRisks");
+  }
+
+  if (
+    !Array.isArray(userResponse.pros) ||
+    userResponse.pros.some((value) => typeof value !== "string")
+  ) {
+    throw new Error("AI response has invalid userResponse.pros");
+  }
+
+  if (
+    !Array.isArray(userResponse.cons) ||
+    userResponse.cons.some((value) => typeof value !== "string")
+  ) {
+    throw new Error("AI response has invalid userResponse.cons");
   }
 
   if (!isNonEmptyString(userResponse.assessment)) {
@@ -179,10 +198,12 @@ function normalizeAiResponse(parsed) {
   return {
     userResponse: {
       assessment: userResponse.assessment.trim(),
+      pros: userResponse.pros.map((value) => value.trim()),
+      cons: userResponse.cons.map((value) => value.trim()),
       keyRisks: userResponse.keyRisks.map((r) => r.trim()),
       mechanism: userResponse.mechanism.trim(),
       recommendation: userResponse.recommendation.trim(),
-      alternatives: userResponse.alternatives ?? []
+      alternatives: (userResponse.alternatives ?? []).map((value) => value.trim())
     },
     clinicalSummary: {
       verdict: clinicalSummary.verdict.trim(),
