@@ -4,7 +4,7 @@ import { getSystemPrompt } from "./prompt.service.js";
 
 const MODEL = "gpt-5.4-mini";
 const TEMPERATURE = 0.2;
-const MAX_COMPLETION_TOKENS = 3000;
+const MAX_OUTPUT_TOKENS = 3000;
 const OPENAI_TIMEOUT_MS = 10000;
 
 /*
@@ -307,7 +307,7 @@ async function requestAiJson(messages) {
     response = await createCompletionWithTimeout(client, {
       model: MODEL,
       temperature: TEMPERATURE,
-      max_completion_tokens: MAX_COMPLETION_TOKENS,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
       text: {
         format: JSON_OBJECT_FORMAT
       },
@@ -364,7 +364,7 @@ async function requestFollowUpJson(messages) {
     response = await createCompletionWithTimeout(client, {
       model: MODEL,
       temperature: TEMPERATURE,
-      max_completion_tokens: MAX_COMPLETION_TOKENS,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
       text: {
         format: JSON_OBJECT_FORMAT
       },
