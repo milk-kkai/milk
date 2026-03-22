@@ -46,34 +46,7 @@ const FOLLOW_UP_OUTPUT_SCHEMA_INSTRUCTION = [
   "Do not add extra keys.",
 ].join("\n");
 
-const NUTRITION_ANALYSIS_RESPONSE_FORMAT = {
-  type: "json_schema",
-  json_schema: {
-    name: "nutrition_analysis",
-    schema: {
-      type: "object",
-      properties: {
-        userResponse: { type: "object" },
-        clinicalSummary: { type: "object" }
-      },
-      required: ["userResponse", "clinicalSummary"]
-    }
-  }
-};
-
-const FOLLOW_UP_RESPONSE_FORMAT = {
-  type: "json_schema",
-  json_schema: {
-    name: "follow_up_answer",
-    schema: {
-      type: "object",
-      properties: {
-        answer: { type: "string" }
-      },
-      required: ["answer"]
-    }
-  }
-};
+const JSON_OBJECT_FORMAT = { type: "json_object" };
 
 let openaiClient = null;
 
@@ -335,7 +308,9 @@ async function requestAiJson(messages) {
       model: MODEL,
       temperature: TEMPERATURE,
       max_completion_tokens: MAX_COMPLETION_TOKENS,
-      response_format: NUTRITION_ANALYSIS_RESPONSE_FORMAT,
+      text: {
+        format: JSON_OBJECT_FORMAT
+      },
       input: [
         {
           role: "system",
@@ -390,7 +365,9 @@ async function requestFollowUpJson(messages) {
       model: MODEL,
       temperature: TEMPERATURE,
       max_completion_tokens: MAX_COMPLETION_TOKENS,
-      response_format: FOLLOW_UP_RESPONSE_FORMAT,
+      text: {
+        format: JSON_OBJECT_FORMAT
+      },
       input: [
         { role: "system", content: FOLLOW_UP_OUTPUT_SCHEMA_INSTRUCTION },
         { role: "user", content: userMessage.content }
