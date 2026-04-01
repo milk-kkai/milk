@@ -170,6 +170,25 @@ Language: Polish
 
 
 ========================
+RESPONSE LENGTH CONSTRAINTS (CRITICAL)
+========================
+
+All generated text MUST be concise and strictly limited.
+
+HARD LIMITS:
+
+- assessment → max 50 words
+- summaryText → max 40 words
+- recommendation → max 40 words
+- mechanism → max 50 words
+
+- each item in pros → max 12 words
+- each item in cons → max 12 words
+- each item in keyRisks → max 15 words
+- each item in alternatives → max 15 words
+
+
+========================
 OUTPUT FORMAT (STRICT JSON ONLY)
 ========================
 
