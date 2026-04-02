@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { query } from "../db/db.js";
 import { getSystemPrompt } from "./prompt.service.js";
+import { sanitizeAIOutput } from "../utils/sanitize.js";
 
 const MODEL = "gpt-5.4-mini";
 const TEMPERATURE = 0.2;
@@ -438,10 +439,13 @@ export async function analyzeInput(payload) {
   ];
 
   const result = await requestAiJson(messages);
+  const aiResult = sanitizeAIOutput(result);
 
-  await saveSessionSummary(result.clinicalSummary, payload.productName);
+  console.log("SANITIZED AI OUTPUT:", aiResult);
 
-  return result;
+  await saveSessionSummary(aiResult.clinicalSummary, payload.productName);
+
+  return aiResult;
 }
 
 /*
