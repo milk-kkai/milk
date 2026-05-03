@@ -29,5 +29,7 @@ export function getBotConfig() {
     telegramBotToken: requiredEnv("TELEGRAM_BOT_TOKEN"),
     appSecretKey: requiredEnv("APP_SECRET_KEY"),
     apiBaseUrl: optionalEnv("API_BASE_URL", DEFAULT_API_BASE_URL).replace(/\/+$/, ""),
+    telegramWebhookUrl: optionalEnv("TELEGRAM_WEBHOOK_URL", ""),
+    telegramWebhookSecret: optionalEnv("TELEGRAM_WEBHOOK_SECRET", ""),
   };
 }

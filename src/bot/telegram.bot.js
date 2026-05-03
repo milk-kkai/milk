@@ -19,10 +19,10 @@ import {
   saveUserProfile,
 } from "./local-store.js";
 
-const { telegramBotToken } = getBotConfig();
-const bot = new Telegraf(telegramBotToken);
+const { telegramBotToken, telegramWebhookSecret, telegramWebhookUrl } = getBotConfig();
+export const telegramBot = new Telegraf(telegramBotToken);
 const sessions = new Map();
-const BOT_VERSION = "telegram-bot-2026-05-03-topic-only-v2";
+export const BOT_VERSION = "telegram-bot-2026-05-03-webhook-v1";
 
 function getSession(userId) {
   const key = String(userId);
@@ -157,26 +157,26 @@ async function createAnalysisTopic(ctx, { productName, ingredients, analysis }) 
   return messageThreadId;
 }
 
-bot.start(showMainMenu);
+telegramBot.start(showMainMenu);
 
-bot.command("new_product", startProductFlow);
-bot.command("health", showProfileMenu);
-bot.command("help", showHelp);
-bot.command("version", async (ctx) => {
+telegramBot.command("new_product", startProductFlow);
+telegramBot.command("health", showProfileMenu);
+telegramBot.command("help", showHelp);
+telegramBot.command("version", async (ctx) => {
   await ctx.reply(BOT_VERSION);
 });
 
-bot.action("menu", async (ctx) => {
+telegramBot.action("menu", async (ctx) => {
   await ctx.answerCbQuery();
   await showMainMenu(ctx);
 });
 
-bot.action("help", async (ctx) => {
+telegramBot.action("help", async (ctx) => {
   await ctx.answerCbQuery();
   await showHelp(ctx);
 });
 
-bot.action("history:help", async (ctx) => {
+telegramBot.action("history:help", async (ctx) => {
   await ctx.answerCbQuery();
   await ctx.reply(
     [
@@ -189,7 +189,7 @@ bot.action("history:help", async (ctx) => {
   );
 });
 
-bot.command("topic_debug", async (ctx) => {
+telegramBot.command("topic_debug", async (ctx) => {
   if (!isPrivateChat(ctx)) {
     return;
   }
@@ -221,17 +221,17 @@ bot.command("topic_debug", async (ctx) => {
   }
 });
 
-bot.action("product:start", async (ctx) => {
+telegramBot.action("product:start", async (ctx) => {
   await ctx.answerCbQuery();
   await startProductFlow(ctx);
 });
 
-bot.action("profile:menu", async (ctx) => {
+telegramBot.action("profile:menu", async (ctx) => {
   await ctx.answerCbQuery();
   await showProfileMenu(ctx);
 });
 
-bot.action("profile:set", async (ctx) => {
+telegramBot.action("profile:set", async (ctx) => {
   await ctx.answerCbQuery();
   const session = getSession(ctx.from.id);
   session.step = "awaiting_profile";
@@ -249,7 +249,7 @@ bot.action("profile:set", async (ctx) => {
   );
 });
 
-bot.action("profile:show", async (ctx) => {
+telegramBot.action("profile:show", async (ctx) => {
   await ctx.answerCbQuery();
   const profile = getUserProfile(ctx.from.id);
 
@@ -259,13 +259,13 @@ bot.action("profile:show", async (ctx) => {
   );
 });
 
-bot.action("profile:clear", async (ctx) => {
+telegramBot.action("profile:clear", async (ctx) => {
   await ctx.answerCbQuery();
   clearUserProfile(ctx.from.id);
   await ctx.reply("Profil wyczyszczony.", profileKeyboard());
 });
 
-bot.action(/^topic:open:(\d+)$/, async (ctx) => {
+telegramBot.action(/^topic:open:(\d+)$/, async (ctx) => {
   await ctx.answerCbQuery("Topic jest gotowy w historii tego czatu.");
   await ctx.reply(
     [
@@ -278,7 +278,7 @@ bot.action(/^topic:open:(\d+)$/, async (ctx) => {
   );
 });
 
-bot.on("text", async (ctx) => {
+telegramBot.on("text", async (ctx) => {
   if (!isPrivateChat(ctx)) {
     return;
   }
@@ -384,32 +384,50 @@ bot.on("text", async (ctx) => {
   await ctx.reply("Wybierz akcje z menu.", mainMenuKeyboard());
 });
 
-bot.catch((error, ctx) => {
+telegramBot.catch((error, ctx) => {
   console.error("Telegram bot error", error);
   void ctx.reply("Cos poszlo nie tak. Sprobuj jeszcze raz za chwile.");
 });
 
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
+export function getTelegramWebhookSecret() {
+  return telegramWebhookSecret;
+}
 
-await bot.telegram.setMyCommands([
-  {
-    command: "new_product",
-    description: "Nowy produkt",
-  },
-  {
-    command: "health",
-    description: "Zdrowie i preferencje",
-  },
-  {
-    command: "help",
-    description: "Pomoc",
-  },
-  {
-    command: "version",
-    description: "Wersja bota",
-  },
-]);
+export async function configureTelegramBotWebhook(logger = console) {
+  await telegramBot.telegram.setMyCommands([
+    {
+      command: "new_product",
+      description: "Nowy produkt",
+    },
+    {
+      command: "health",
+      description: "Zdrowie i preferencje",
+    },
+    {
+      command: "help",
+      description: "Pomoc",
+    },
+    {
+      command: "version",
+      description: "Wersja bota",
+    },
+  ]);
 
-await bot.launch();
-console.log(`Telegram bot is running: ${BOT_VERSION}`);
+  if (!telegramWebhookUrl) {
+    logger.warn?.("TELEGRAM_WEBHOOK_URL is not set; Telegram webhook was not configured");
+    return;
+  }
+
+  const webhookOptions = {
+    allowed_updates: ["message", "callback_query"],
+    drop_pending_updates: false,
+  };
+
+  if (telegramWebhookSecret) {
+    webhookOptions.secret_token = telegramWebhookSecret;
+  }
+
+  await telegramBot.telegram.setWebhook(telegramWebhookUrl, webhookOptions);
+  logger.info?.(`Telegram webhook configured: ${telegramWebhookUrl}`);
+  logger.info?.(`Telegram bot version: ${BOT_VERSION}`);
+}

@@ -1,4 +1,5 @@
 import { buildApp } from "./app.js";
+import { configureTelegramBotWebhook } from "./bot/telegram.bot.js";
 import { getEnv } from "./config/env.js";
 import 'dotenv/config'
 
@@ -41,6 +42,12 @@ try {
   });
 
   app.log.info(`Server listening on port ${port}`);
+
+  try {
+    await configureTelegramBotWebhook(app.log);
+  } catch (error) {
+    app.log.error({ err: error }, "Failed to configure Telegram webhook");
+  }
 } catch (error) {
   app.log.error({ err: error }, "Failed to start server");
   process.exit(1);

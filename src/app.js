@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { query } from "./db/db.js";
 import { aiRoutes } from "./routes/ai.routes.js";
+import { telegramRoutes } from "./routes/telegram.routes.js";
 import { getSystemPrompt } from "./services/prompt.service.js";
 
 export async function buildApp() {
@@ -14,6 +15,10 @@ export async function buildApp() {
   });
 
   app.addHook("onRequest", async (request, reply) => {
+    if (request.url.startsWith("/telegram/webhook")) {
+      return;
+    }
+
     const appKey = request.headers["x-app-key"];
     const expectedKey = process.env.APP_SECRET_KEY;
 
@@ -78,6 +83,7 @@ export async function buildApp() {
   });
 
   await app.register(aiRoutes, { prefix: "/ai" });
+  await app.register(telegramRoutes, { prefix: "/telegram" });
 
   app.setErrorHandler(async (error, request, reply) => {
     request.log.error({ err: error }, "Unhandled request error");
