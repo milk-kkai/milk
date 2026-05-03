@@ -393,6 +393,10 @@ export function getTelegramWebhookSecret() {
   return telegramWebhookSecret;
 }
 
+export function getTelegramWebhookUrl() {
+  return telegramWebhookUrl;
+}
+
 export async function configureTelegramBotWebhook(logger = console) {
   await telegramBot.telegram.setMyCommands([
     {

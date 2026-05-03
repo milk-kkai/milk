@@ -15,7 +15,10 @@ export async function buildApp() {
   });
 
   app.addHook("onRequest", async (request, reply) => {
-    if (request.url.startsWith("/telegram/webhook")) {
+    if (
+      request.url.startsWith("/telegram/webhook") ||
+      request.url.startsWith("/telegram/status")
+    ) {
       return;
     }
 

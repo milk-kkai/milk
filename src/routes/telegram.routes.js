@@ -1,5 +1,7 @@
 import {
+  BOT_VERSION,
   getTelegramWebhookSecret,
+  getTelegramWebhookUrl,
   telegramBot,
 } from "../bot/telegram.bot.js";
 
@@ -28,6 +30,19 @@ function rememberUpdate(updateId) {
 }
 
 export async function telegramRoutes(app) {
+  app.get("/status", async () => {
+    const webhookSecret = getTelegramWebhookSecret();
+    const webhookUrl = getTelegramWebhookUrl();
+
+    return {
+      ok: true,
+      botVersion: BOT_VERSION,
+      webhookUrlConfigured: webhookUrl.length > 0,
+      webhookUrl,
+      webhookSecretConfigured: webhookSecret.length > 0,
+    };
+  });
+
   app.post("/webhook", async (request, reply) => {
     const expectedSecret = getTelegramWebhookSecret();
 
@@ -35,6 +50,13 @@ export async function telegramRoutes(app) {
       const actualSecret = request.headers["x-telegram-bot-api-secret-token"];
 
       if (actualSecret !== expectedSecret) {
+        request.log.warn(
+          {
+            hasActualSecret: typeof actualSecret === "string" && actualSecret.length > 0,
+          },
+          "Rejected Telegram webhook request because secret token did not match",
+        );
+
         return reply.code(401).send({
           ok: false,
           error: "Invalid Telegram webhook secret",
