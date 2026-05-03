@@ -13,6 +13,14 @@ export function afterAnalysisKeyboard(messageThreadId) {
   return Markup.inlineKeyboard([
     [Markup.button.callback("Dopytaj o ten produkt", `topic:open:${messageThreadId}`)],
     [Markup.button.callback("Nowy produkt", "product:start")],
+    [Markup.button.callback("Menu glowne", "menu")],
+  ]);
+}
+
+export function afterAnalysisFallbackKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback("Nowy produkt", "product:start")],
+    [Markup.button.callback("Menu glowne", "menu")],
   ]);
 }
 

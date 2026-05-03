@@ -1,10 +1,14 @@
 import { Telegraf } from "telegraf";
 import { getBotConfig } from "./bot.config.js";
 import { analyzeProduct, askFollowUp } from "./api-client.js";
-import { mainMenuKeyboard, afterAnalysisKeyboard, profileKeyboard } from "./keyboards.js";
+import {
+  afterAnalysisFallbackKeyboard,
+  afterAnalysisKeyboard,
+  mainMenuKeyboard,
+  profileKeyboard,
+} from "./keyboards.js";
 import {
   buildFollowUpContext,
-  formatAnalysis,
   formatFollowUpAnswer,
   formatTopicIntro,
   safeTopicName,
@@ -50,12 +54,54 @@ function profileToUserProfile(profile) {
   };
 }
 
+function describeTelegramError(error) {
+  const description =
+    error?.description ||
+    error?.response?.description ||
+    error?.message ||
+    "Unknown Telegram error";
+  const code = error?.code || error?.response?.error_code || "unknown";
+
+  return { code, description };
+}
+
+function topicSetupHelp(error) {
+  const { code, description } = describeTelegramError(error);
+  const lowerDescription = description.toLowerCase();
+
+  if (
+    lowerDescription.includes("not a forum") ||
+    lowerDescription.includes("topic") ||
+    lowerDescription.includes("thread")
+  ) {
+    return [
+      "Analiza jest gotowa, ale Telegram nie pozwolil utworzyc topicu.",
+      "",
+      `Telegram error: ${code} ${description}`,
+      "",
+      "Najczestsza przyczyna: dla bota nie jest wlaczony Threaded Mode.",
+      "Naprawa:",
+      "1. Otworz @BotFather.",
+      "2. Wejdz w mini-app / panel zarzadzania botem.",
+      "3. Wybierz tego bota.",
+      "4. Wlacz Threaded Mode / Topics for private chats.",
+      "5. Zapisz zmiany i zrob nowa analize.",
+    ].join("\n");
+  }
+
+  return [
+    "Analiza jest gotowa, ale nie udalo sie utworzyc topicu.",
+    "",
+    `Telegram error: ${code} ${description}`,
+  ].join("\n");
+}
+
 async function showMainMenu(ctx) {
   await ctx.reply(
     [
       "Czesc. Wybierz, co robimy:",
       "",
-      "Historia i dopytywanie dzialaja jako osobne topiki w tym prywatnym czacie z botem.",
+      "Analiza pojawi sie w osobnym topicu produktu. Tutaj zostawiam menu i status.",
     ].join("\n"),
     mainMenuKeyboard(),
   );
@@ -102,7 +148,8 @@ bot.action("help", async (ctx) => {
       "1. Kliknij Sprawdz produkt.",
       "2. Podaj nazwe produktu.",
       "3. Wklej sklad.",
-      "4. Wynik dostaniesz od razu tutaj, a rozmowa o produkcie pojawi sie w osobnym topicu.",
+      "4. Wynik pojawi sie w osobnym topicu produktu.",
+      "5. Tam mozesz od razu dopytywac AI.",
     ].join("\n"),
     mainMenuKeyboard(),
   );
@@ -115,9 +162,42 @@ bot.action("history:help", async (ctx) => {
       "Twoja historia to lista topicow w tym prywatnym czacie z botem.",
       "Otworz widok topicow w Telegramie i wybierz produkt, do ktorego chcesz wrocic.",
       "",
-      "Kazdy topic ma w srodku gotowa analize i mozesz tam dopytywac AI.",
+      "Kazdy topic ma pelna analize i sluzy do dopytywania AI o konkretny produkt.",
     ].join("\n"),
+    mainMenuKeyboard(),
   );
+});
+
+bot.command("topic_debug", async (ctx) => {
+  if (!isPrivateChat(ctx)) {
+    return;
+  }
+
+  try {
+    const me = await ctx.telegram.getMe();
+    await ctx.reply(
+      [
+        "Diagnostyka topicow:",
+        `Bot: @${me.username}`,
+        `allows_users_to_create_topics: ${String(me.allows_users_to_create_topics)}`,
+        "",
+        "Jesli wartosc jest false albo topic testowy sie nie tworzy, wlacz Threaded Mode w @BotFather.",
+      ].join("\n"),
+    );
+
+    const topic = await ctx.telegram.callApi("createForumTopic", {
+      chat_id: ctx.chat.id,
+      name: safeTopicName("Test topic"),
+    });
+
+    await ctx.telegram.sendMessage(ctx.chat.id, "Topic testowy dziala.", {
+      message_thread_id: topic.message_thread_id,
+    });
+    await ctx.reply(`Topic testowy utworzony: ${topic.message_thread_id}`);
+  } catch (error) {
+    console.error("Topic debug failed", error);
+    await ctx.reply(topicSetupHelp(error));
+  }
 });
 
 bot.action("product:start", async (ctx) => {
@@ -126,7 +206,7 @@ bot.action("product:start", async (ctx) => {
   session.step = "awaiting_product_name";
   delete session.productName;
 
-  await ctx.reply("Podaj nazwe produktu.");
+  await ctx.reply("Podaj nazwe produktu.", mainMenuKeyboard());
 });
 
 bot.action("profile:menu", async (ctx) => {
@@ -148,6 +228,7 @@ bot.action("profile:set", async (ctx) => {
       "Choroby: insulinoopornosc",
       "Cele: mniej cukru, wiecej bialka",
     ].join("\n"),
+    profileKeyboard(),
   );
 });
 
@@ -155,7 +236,10 @@ bot.action("profile:show", async (ctx) => {
   await ctx.answerCbQuery();
   const profile = getUserProfile(ctx.from.id);
 
-  await ctx.reply(profile?.profileText ? `Twoj profil:\n${profile.profileText}` : "Nie masz jeszcze profilu.");
+  await ctx.reply(
+    profile?.profileText ? `Twoj profil:\n${profile.profileText}` : "Nie masz jeszcze profilu.",
+    profileKeyboard(),
+  );
 });
 
 bot.action("profile:clear", async (ctx) => {
@@ -171,8 +255,9 @@ bot.action(/^topic:open:(\d+)$/, async (ctx) => {
       "Topic tej analizy jest juz utworzony.",
       "Otworz liste topicow w tym czacie i wybierz produkt z nazwa z analizy.",
       "",
-      "Tam mozesz pisac pytania, a bot odpowie w kontekscie tego produktu.",
+      "Tam wpisz pytanie, a bot odpowie w kontekscie tego produktu.",
     ].join("\n"),
+    mainMenuKeyboard(),
   );
 });
 
@@ -194,7 +279,10 @@ bot.on("text", async (ctx) => {
     });
 
     if (!context) {
-      await ctx.reply("Nie mam kontekstu tej analizy. Wroc do glownego czatu i uruchom nowa analize.");
+      await ctx.reply(
+        "Nie mam kontekstu tej analizy. Wroc do glownego czatu i uruchom nowa analize.",
+        mainMenuKeyboard(),
+      );
       return;
     }
 
@@ -209,7 +297,7 @@ bot.on("text", async (ctx) => {
       });
     } catch (error) {
       console.error("Follow-up request failed", error);
-      await ctx.reply(`Nie udalo sie dopytac AI. ${error.message}`);
+      await ctx.reply(`Nie udalo sie dopytac AI. ${error.message}`, mainMenuKeyboard());
       return;
     }
 
@@ -222,7 +310,7 @@ bot.on("text", async (ctx) => {
   if (session.step === "awaiting_product_name") {
     session.productName = text;
     session.step = "awaiting_ingredients";
-    await ctx.reply("Teraz wklej sklad produktu.");
+    await ctx.reply("Teraz wklej sklad produktu.", mainMenuKeyboard());
     return;
   }
 
@@ -244,7 +332,7 @@ bot.on("text", async (ctx) => {
       });
     } catch (error) {
       console.error("Analyze request failed", error);
-      await ctx.reply(`Nie udalo sie przeanalizowac produktu. ${error.message}`);
+      await ctx.reply(`Nie udalo sie przeanalizowac produktu. ${error.message}`, mainMenuKeyboard());
       return;
     }
 
@@ -258,11 +346,16 @@ bot.on("text", async (ctx) => {
       });
     } catch (error) {
       console.error("Failed to create private topic", error);
+      await ctx.reply(topicSetupHelp(error));
     }
 
     await ctx.reply(
-      formatAnalysis({ productName, ingredients, analysis }),
-      messageThreadId ? afterAnalysisKeyboard(messageThreadId) : mainMenuKeyboard(),
+      [
+        `Analiza gotowa: ${productName}`,
+        "",
+        "Pelny wynik jest w topicu tego produktu. Mozesz tam od razu dopytywac AI.",
+      ].join("\n"),
+      messageThreadId ? afterAnalysisKeyboard(messageThreadId) : afterAnalysisFallbackKeyboard(),
     );
     return;
   }
