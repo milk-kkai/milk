@@ -443,7 +443,15 @@ export async function analyzeInput(payload) {
 
   console.log("SANITIZED AI OUTPUT:", aiResult);
 
-  await saveSessionSummary(aiResult.clinicalSummary, payload.productName);
+  try {
+    await saveSessionSummary(aiResult.clinicalSummary, payload.productName);
+  } catch (error) {
+    console.error("Failed to save session summary", {
+      message: error?.message,
+      cause: error?.cause?.message,
+      code: error?.cause?.code,
+    });
+  }
 
   return aiResult;
 }
