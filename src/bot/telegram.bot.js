@@ -2,8 +2,6 @@ import { Telegraf } from "telegraf";
 import { getBotConfig } from "./bot.config.js";
 import { analyzeProduct, askFollowUp } from "./api-client.js";
 import {
-  afterAnalysisFallbackKeyboard,
-  afterAnalysisKeyboard,
   mainMenuKeyboard,
   profileKeyboard,
 } from "./keyboards.js";
@@ -107,6 +105,31 @@ async function showMainMenu(ctx) {
   );
 }
 
+async function startProductFlow(ctx) {
+  const session = getSession(ctx.from.id);
+  session.step = "awaiting_product_name";
+  delete session.productName;
+
+  await ctx.reply("Podaj nazwe produktu.");
+}
+
+async function showHelp(ctx) {
+  await ctx.reply(
+    [
+      "Najprostszy flow:",
+      "1. Wybierz /new_product z menu.",
+      "2. Podaj nazwe produktu.",
+      "3. Wklej sklad.",
+      "4. Pelna analiza pojawi sie tylko w topicu produktu.",
+      "5. W topicu mozesz od razu dopytywac AI.",
+    ].join("\n"),
+  );
+}
+
+async function showProfileMenu(ctx) {
+  await ctx.reply("Tutaj ustawiasz dane, ktore bot dolaczy do kolejnych analiz.", profileKeyboard());
+}
+
 async function createAnalysisTopic(ctx, { productName, ingredients, analysis }) {
   const topic = await ctx.telegram.callApi("createForumTopic", {
     chat_id: ctx.chat.id,
@@ -135,6 +158,10 @@ async function createAnalysisTopic(ctx, { productName, ingredients, analysis }) 
 
 bot.start(showMainMenu);
 
+bot.command("new_product", startProductFlow);
+bot.command("health", showProfileMenu);
+bot.command("help", showHelp);
+
 bot.action("menu", async (ctx) => {
   await ctx.answerCbQuery();
   await showMainMenu(ctx);
@@ -142,17 +169,7 @@ bot.action("menu", async (ctx) => {
 
 bot.action("help", async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.reply(
-    [
-      "Najprostszy flow:",
-      "1. Kliknij Sprawdz produkt.",
-      "2. Podaj nazwe produktu.",
-      "3. Wklej sklad.",
-      "4. Wynik pojawi sie w osobnym topicu produktu.",
-      "5. Tam mozesz od razu dopytywac AI.",
-    ].join("\n"),
-    mainMenuKeyboard(),
-  );
+  await showHelp(ctx);
 });
 
 bot.action("history:help", async (ctx) => {
@@ -202,16 +219,12 @@ bot.command("topic_debug", async (ctx) => {
 
 bot.action("product:start", async (ctx) => {
   await ctx.answerCbQuery();
-  const session = getSession(ctx.from.id);
-  session.step = "awaiting_product_name";
-  delete session.productName;
-
-  await ctx.reply("Podaj nazwe produktu.", mainMenuKeyboard());
+  await startProductFlow(ctx);
 });
 
 bot.action("profile:menu", async (ctx) => {
   await ctx.answerCbQuery();
-  await ctx.reply("Tutaj ustawiasz dane, ktore bot dolaczy do kolejnych analiz.", profileKeyboard());
+  await showProfileMenu(ctx);
 });
 
 bot.action("profile:set", async (ctx) => {
@@ -319,7 +332,7 @@ bot.on("text", async (ctx) => {
     const ingredients = text;
     resetSession(ctx.from.id);
 
-    await ctx.reply("Analizuje produkt...");
+    await ctx.sendChatAction("typing");
 
     const profile = getUserProfile(ctx.from.id);
     let analysis;
@@ -339,24 +352,21 @@ bot.on("text", async (ctx) => {
     let messageThreadId = null;
 
     try {
-      messageThreadId = await createAnalysisTopic(ctx, {
+      await createAnalysisTopic(ctx, {
         productName,
         ingredients,
         analysis,
       });
+      messageThreadId = true;
     } catch (error) {
       console.error("Failed to create private topic", error);
       await ctx.reply(topicSetupHelp(error));
     }
 
-    await ctx.reply(
-      [
-        `Analiza gotowa: ${productName}`,
-        "",
-        "Pelny wynik jest w topicu tego produktu. Mozesz tam od razu dopytywac AI.",
-      ].join("\n"),
-      messageThreadId ? afterAnalysisKeyboard(messageThreadId) : afterAnalysisFallbackKeyboard(),
-    );
+    if (!messageThreadId) {
+      await ctx.reply("Analiza jest gotowa, ale nie mam gdzie jej pokazac bez topicu.");
+    }
+
     return;
   }
 
@@ -377,6 +387,21 @@ bot.catch((error, ctx) => {
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
+await bot.telegram.setMyCommands([
+  {
+    command: "new_product",
+    description: "Nowy produkt",
+  },
+  {
+    command: "health",
+    description: "Zdrowie i preferencje",
+  },
+  {
+    command: "help",
+    description: "Pomoc",
+  },
+]);
 
 await bot.launch();
 console.log("Telegram bot is running");
