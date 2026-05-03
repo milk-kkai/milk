@@ -22,6 +22,7 @@ import {
 const { telegramBotToken } = getBotConfig();
 const bot = new Telegraf(telegramBotToken);
 const sessions = new Map();
+const BOT_VERSION = "telegram-bot-2026-05-03-topic-only-v2";
 
 function getSession(userId) {
   const key = String(userId);
@@ -161,6 +162,9 @@ bot.start(showMainMenu);
 bot.command("new_product", startProductFlow);
 bot.command("health", showProfileMenu);
 bot.command("help", showHelp);
+bot.command("version", async (ctx) => {
+  await ctx.reply(BOT_VERSION);
+});
 
 bot.action("menu", async (ctx) => {
   await ctx.answerCbQuery();
@@ -401,7 +405,11 @@ await bot.telegram.setMyCommands([
     command: "help",
     description: "Pomoc",
   },
+  {
+    command: "version",
+    description: "Wersja bota",
+  },
 ]);
 
 await bot.launch();
-console.log("Telegram bot is running");
+console.log(`Telegram bot is running: ${BOT_VERSION}`);
