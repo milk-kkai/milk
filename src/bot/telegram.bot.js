@@ -12,11 +12,11 @@ import {
   safeTopicName,
 } from "./message-formatters.js";
 import {
+  appendUserProfile,
   clearUserProfile,
   getTopicContext,
   getUserProfile,
   saveTopicContext,
-  saveUserProfile,
 } from "./local-store.js";
 
 const { telegramBotToken, telegramWebhookSecret, telegramWebhookUrl } = getBotConfig();
@@ -327,7 +327,7 @@ telegramBot.on("text", async (ctx) => {
   if (session.step === "awaiting_product_name") {
     session.productName = text;
     session.step = "awaiting_ingredients";
-    await ctx.reply("Teraz wklej sklad produktu.", mainMenuKeyboard());
+    await ctx.reply("Teraz wklej sklad produktu.");
     return;
   }
 
@@ -375,9 +375,9 @@ telegramBot.on("text", async (ctx) => {
   }
 
   if (session.step === "awaiting_profile") {
-    saveUserProfile(ctx.from.id, text);
+    appendUserProfile(ctx.from.id, text);
     resetSession(ctx.from.id);
-    await ctx.reply("Profil zapisany. Dolacze go do kolejnych analiz.", mainMenuKeyboard());
+    await ctx.reply("Dopisane do profilu. Dolacze caly profil do kolejnych analiz.", profileKeyboard());
     return;
   }
 

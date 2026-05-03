@@ -69,6 +69,36 @@ export function saveUserProfile(userId, profileText) {
   writeStore(store);
 }
 
+export function appendUserProfile(userId, profileText) {
+  const store = readStore();
+  const key = String(userId);
+  const existingProfile = store.userProfiles[key];
+  const existingEntries = Array.isArray(existingProfile?.entries)
+    ? existingProfile.entries.filter((entry) => typeof entry === "string" && entry.trim().length > 0)
+    : [];
+  const legacyText =
+    typeof existingProfile?.profileText === "string" && existingProfile.profileText.trim().length > 0
+      ? existingProfile.profileText.trim()
+      : "";
+  const entries = legacyText && existingEntries.length === 0
+    ? [legacyText]
+    : existingEntries;
+  const nextEntry = profileText.trim();
+
+  if (!nextEntry) {
+    return;
+  }
+
+  const uniqueEntries = entries.includes(nextEntry) ? entries : [...entries, nextEntry];
+
+  store.userProfiles[key] = {
+    entries: uniqueEntries,
+    profileText: uniqueEntries.join("\n"),
+    updatedAt: new Date().toISOString(),
+  };
+  writeStore(store);
+}
+
 export function getUserProfile(userId) {
   const store = readStore();
   return store.userProfiles[String(userId)] ?? null;
